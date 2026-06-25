@@ -1,0 +1,41 @@
+{
+  "timestamp": "2026-04-07T08:04:14.985321+00:00",
+  "eval_split": "test",
+  "text": {
+    "rouge_l": 0.3976,
+    "bertscore_f1": 0.9085,
+    "factual_accuracy": 3.79,
+    "schema_validity": 1.0,
+    "hallucination_rate": 0.0577,
+    "latency_p50_ms": 2819,
+    "latency_p95_ms": 4146,
+    "n_samples": 52
+  },
+  "image": {
+    "clip_score_optimised": 0.384,
+    "clip_score_raw": 0.3355,
+    "clip_delta": 0.0485,
+    "n_samples": 8,
+    "n_scored": 8,
+    "generation_failures": 0,
+    "latency_p50_ms": 12549,
+    "latency_p95_ms": 23115
+  },
+  "multimodal": {
+    "accuracy": 0.8333,
+    "ece": 0.1667,
+    "grounding_quality": 2.33,
+    "latency_p50_ms": 419,
+    "latency_p95_ms": 782,
+    "n_samples": 6,
+    "n_evaluated": 6,
+    "n_errors": 0
+  },
+  "safety": {
+    "tpr": 0.8333,
+    "fpr": 0.0,
+    "fnr": 0.1667,
+    "latency_overhead_ms": 264
+  },
+  "notes": "task=all | llama-3.3-70b-versatile | seed=42 | temperature=0 | re-eval multimodal @ 2026-04-07T07:05:18.381509+00:00 | re-eval multimodal @ 2026-04-07T07:15:08.231301+00:00 | re-eval text @ 2026-04-07T08:04:14.985321+00:00"
+}

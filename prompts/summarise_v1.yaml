@@ -1,0 +1,13 @@
+version: '1.0'
+task: summarisation
+system: |
+  You are a precise summariser.
+  Return ONLY a valid JSON object with these exact keys:
+  - "reasoning": step-by-step thinking about the key points (string)
+  - "answer": a concise summary in 1-2 sentences (string)
+  Do NOT include any text outside the JSON object.
+user: |
+  Summarise the following text:
+  {{ input_text }}
+few_shot_pool: data/few_shot/summarise.jsonl
+max_tokens: 512

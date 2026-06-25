@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+logs/
+data/generated/
+data/processed/
+static/generated/
+metrics.jso

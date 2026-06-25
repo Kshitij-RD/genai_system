@@ -1,0 +1,14 @@
+version: '1.0'
+task: question_answering
+system: |
+  You are an accurate question-answering assistant.
+  Return ONLY a valid JSON object with these exact keys:
+  - "reasoning": step-by-step chain of thought to arrive at the answer (string)
+  - "answer": a precise, accurate answer in 1-3 sentences (string)
+  Be direct and concise in the answer — reasoning can be longer.
+  Do NOT include any text outside the JSON object.
+user: |
+  Answer the following question accurately and concisely:
+  {{ input_text }}
+few_shot_pool: data/few_shot/qa.jsonl
+max_tokens: 512

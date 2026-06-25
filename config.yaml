@@ -1,0 +1,81 @@
+llm:
+  provider: groq
+  model: llama-3.3-70b-versatile
+  base_url: https://api.groq.com/openai/v1
+  api_key_env: GROQ_API_KEY
+  temperature: 0
+  seed: 42
+  max_tokens: 1024
+
+safety:
+  pii_enabled: true
+  injection_enabled: true
+  toxicity_enabled: true
+  image_enabled: true
+  pii_score_threshold: 0.7
+  pii_ignored_entities:
+    - LOCATION
+    - PERSON
+    - DATE_TIME
+    - NRP
+  image_unsafe_labels:
+    - "safe image"
+    - "nsfw content"
+    - "violent image"
+    - "hateful image"
+  image_threshold: 0.25
+  log_path: logs/safety_log.jsonl
+
+image_gen:
+  model: "@cf/stabilityai/stable-diffusion-xl-base-1.0"
+  account_id_env: CF_ACCOUNT_ID
+  api_key_env: CF_API_TOKEN
+  steps: 20
+  guidance_scale: 7.5
+  negative_prompt: "blurry, watermark, low resolution, deformed, artifacts"
+  output_dir: "data/generated/"
+  static_dir: "static/generated/"
+  clip_model: "ViT-B-32"
+  clip_pretrained: "laion2b_s34b_b79k"
+
+multimodal:
+  model: meta-llama/llama-4-scout-17b-16e-instruct
+  base_url: https://api.groq.com/openai/v1
+  api_key_env: GROQ_API_KEY
+  temperature: 0
+  max_tokens: 1024
+  eval_images_dir: data/processed/mm_images/
+
+prompts:
+  dir: prompts/
+  few_shot_dir: data/few_shot/
+  encoder_model: all-MiniLM-L6-v2
+  default_k_shot: 3
+  context_window: 8192
+
+data:
+  processed_dir: data/processed/
+  few_shot_dir: data/few_shot/
+  generated_dir: data/generated/
+  splits_path: data/splits.json
+  total_samples: 250
+  unsafe_samples: 20
+  test_ratio: 0.3
+
+eval:
+  metrics_path: metrics.json
+  hallucination_model: cross-encoder/nli-deberta-v3-small
+  hallucination_threshold: 0.5
+
+logging:
+  level: INFO
+  safety_log: logs/safety_log.jsonl
+  inference_log: logs/inference_log.jsonl
+  image_log: logs/image_log.jsonl
+  multimodal_log: logs/multimodal_log.jsonl
+
+server:
+  host: 0.0.0.0
+  port: 8001
+
+seed: 42
