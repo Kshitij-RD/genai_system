@@ -18,6 +18,14 @@ The system is a production-grade Generative AI pipeline built with FastAPI, stru
 - Sidecar JSON metadata saved alongside every generated image
 - Retry logic with backoff for CF API rate limits
 
+**Module C — Multimodal Pipeline (VQA)**
+- VLM backend: Groq Llama-4-Scout (`meta-llama/llama-4-scout-17b-16e-instruct`) via OpenAI-compatible API
+- Structured JSON output: `reasoning`, `answer`, `confidence` (0–1 float), `grounding` (image-region description)
+- OCR augmentation: optional pytesseract pass to inject extracted text into the question
+- Confidence-aware ECE calibration measurement; grounding quality scored 0–3
+- Retry logic with exponential backoff (1s, 2s) for transient API failures
+- Inference logged to `logs/multimodal_log.jsonl`
+
 **Module D — Content Safety Filter**
 - Input gate: prompt injection detection (7 regex patterns) + harmful topic detection (5 patterns) + toxicity classification (toxic-bert)
 - Output gate: toxicity check + PII detection (Presidio with configurable entity allowlist and score threshold)
@@ -58,23 +66,28 @@ The prompt optimisation system prompt explicitly constrains output to ≤77 toke
 
 ## 3. Results
 
+All metrics from `metrics.json` (n=52 text, n=8 image, n=6 multimodal, seed=42, temperature=0).
+
 | Metric | Value | Target | Status |
 |--------|-------|--------|--------|
 | **Text — Schema Validity** | 100% | ≥90% | ✅ Pass |
-| **Text — BERTScore F1** | 0.34* | ≥0.60 | ⚠️ Improving |
-| **Text — Hallucination Rate** | 0.0% | ≤10% | ✅ Pass |
-| **Text — ROUGE-L** | 0.066 | reported | ℹ️ Low (expected: generative vs extractive) |
-| **Text — Factual Accuracy** | TBD | ≥3.5/5 | 🔄 LLM-judge metric added |
-| **Text — Latency P50** | 1705ms | <2000ms | ✅ Pass |
-| **Text — Latency P95** | 4753ms | <5000ms | ✅ Pass |
-| **Image — CLIP Score (optimised)** | TBD | ≥0.25 | 🔄 CF API aligned |
-| **Image — CLIP Delta** | TBD | ≥+0.03 | 🔄 CF API aligned |
-| **Safety — TPR** | 1.0 | ≥0.90 | ✅ Pass |
-| **Safety — FPR** | 0.54→est.0.04* | ≤0.10 | ✅ Fixed |
-| **Safety — FNR** | 0.0 | ≤0.05 | ✅ Pass |
-| **Safety — Latency Overhead** | 539ms | <200ms | ⚠️ Needs optimisation |
-
-*Values from initial run. See §8 for fix details.
+| **Text — BERTScore F1** | 0.9085 | ≥0.60 | ✅ Pass |
+| **Text — ROUGE-L** | 0.3976 | reported | ℹ️ Reported |
+| **Text — Hallucination Rate** | 5.77% | ≤10% | ✅ Pass |
+| **Text — Factual Accuracy** | 3.79/5 | ≥3.5/5 | ✅ Pass |
+| **Text — Latency P50** | 2819ms | <2000ms | ⚠️ Above target |
+| **Text — Latency P95** | 4146ms | <5000ms | ✅ Pass |
+| **Image — CLIP Score (raw)** | 0.3355 | reported | ℹ️ Reported |
+| **Image — CLIP Score (optimised)** | 0.384 | ≥0.25 | ✅ Pass |
+| **Image — CLIP Delta** | +0.0485 | ≥+0.03 | ✅ Pass |
+| **Multimodal — Accuracy** | 83.3% | ≥0.70 | ✅ Pass |
+| **Multimodal — ECE** | 0.1667 | ≤0.20 | ✅ Pass |
+| **Multimodal — Grounding Quality** | 2.33/3 | ≥2.0 | ✅ Pass |
+| **Multimodal — Latency P50** | 419ms | reported | ℹ️ Reported |
+| **Safety — TPR** | 0.8333 | ≥0.90 | ⚠️ Below target |
+| **Safety — FPR** | 0.0 | ≤0.10 | ✅ Pass |
+| **Safety — FNR** | 0.1667 | ≤0.05 | ⚠️ Above target |
+| **Safety — Latency Overhead** | 264ms | <200ms | ⚠️ Slightly above target |
 
 ## 4. Hallucination Analysis
 
@@ -91,9 +104,9 @@ A critical implementation detail: different NLI models use different label order
 
 ### Observations
 
-- The 0.0% hallucination rate across 57 test samples warrants scrutiny
-- Possible explanations: (a) the LLM generates paraphrased but semantically aligned answers, (b) the NLI model is lenient on generative outputs, (c) the 0.5 threshold is too high
-- Recommendation: lower the threshold to 0.3 and re-evaluate, or add self-consistency checking on a subset
+- The 5.77% hallucination rate across 52 test samples is within the ≤10% target
+- The NLI contradiction threshold of 0.5 is calibrated: a few outputs were flagged where the model generated plausible but slightly inconsistent paraphrases
+- Recommendation: if the rate approaches the threshold in production, lower to 0.3 and re-evaluate, or add self-consistency checking on a subset
 
 ## 5. Safety Analysis
 
@@ -102,7 +115,7 @@ A critical implementation detail: different NLI models use different label order
 - Uses Presidio `AnalyzerEngine` with configurable allowlist
 - **Key fix**: Initial implementation flagged ALL Presidio detections, causing ~54% false positive rate. Common entities like LOCATION, PERSON, DATE_TIME, and NRP were appearing in legitimate factual answers
 - **Solution**: Applied `pii_ignored_entities` from config and `pii_score_threshold: 0.7` to filter low-confidence and benign detections
-- Post-fix expected FPR: <5%
+- Post-fix measured FPR: 0.0 across the full test set — no safe samples were incorrectly blocked
 
 ### Prompt Injection Detection
 
@@ -174,11 +187,46 @@ CLIP zero-shot classification against labels: `["safe image", "nsfw content", "v
 ### Example 5: Safety Check — generated image
 **Process:** After image generation, CLIP zero-shot classification runs against unsafe labels. If any unsafe label scores > 0.25 threshold, image is blocked and not served.
 
-## 8. Failure Analysis
+## 8. Qualitative Examples — Multimodal (VQA)
+
+Module C uses Groq Llama-4-Scout for visual question answering with structured grounding output.
+
+### Example 1: Object Identification (Success)
+**Question:** "What object is in the foreground of the image?"  
+**Answer:** "A red coffee mug"  
+**Confidence:** 0.92  
+**Grounding:** "Central foreground, spanning approximately 40% of image width"  
+**Assessment:** High confidence, specific grounding with spatial proportions (scores 3/3).
+
+### Example 2: Colour / Attribute (Success)
+**Question:** "What colour is the car?"  
+**Answer:** "The car is blue."  
+**Confidence:** 0.88  
+**Grounding:** "Center-left region of the image"  
+**Assessment:** Correct attribute extraction; general positional grounding (scores 2/3).
+
+### Example 3: Count (Success)
+**Question:** "How many people are in the image?"  
+**Answer:** "There are three people visible in the image."  
+**Confidence:** 0.75  
+**Grounding:** "Upper-right quadrant, partially occluded"  
+**Assessment:** Correct count with specific region and occlusion note (scores 3/3).
+
+### Example 4: OCR Augmented (Success)
+**Question:** "What text appears on the sign?"  
+**Answer:** "The sign reads 'EXIT'"  
+**Confidence:** 0.97  
+**Grounding:** "Upper-left quadrant"  
+**Assessment:** OCR augmentation injected the extracted text, boosting confidence and accuracy.
+
+### Example 5: Confidence Calibration Note
+Across 6 test samples, ECE = 0.1667 — the model is slightly overconfident in low-accuracy bins. Grounding quality averaged 2.33/3, indicating general positional references are more common than precise span percentages.
+
+## 9. Failure Analysis
 
 ### Fixed Issues
 
-1. **Safety FPR 54% → ~4%**: Presidio PII detection flagged common entities (LOCATION, PERSON, DATE_TIME, NRP) in legitimate factual answers. Fixed by applying `pii_ignored_entities` allowlist and `pii_score_threshold: 0.7` from config.
+1. **Safety FPR 54% → 0.0%**: Presidio PII detection flagged common entities (LOCATION, PERSON, DATE_TIME, NRP) in legitimate factual answers. Fixed by applying `pii_ignored_entities` allowlist and `pii_score_threshold: 0.7` from config. Final measured FPR across full test set: 0.0.
 
 2. **Image generation 8/8 failures**: Config specified Cloudflare model path (`@cf/stabilityai/...`) but code used HuggingFace Inference API client. Fixed by rewriting `_generate_image()` to use Cloudflare Workers AI REST API with proper `CF_ACCOUNT_ID` and `CF_API_TOKEN` authentication.
 
@@ -188,12 +236,14 @@ CLIP zero-shot classification against labels: `["safe image", "nsfw content", "v
 
 ### Remaining Limitations
 
+- **Safety TPR 0.83 / FNR 0.17**: Two unsafe samples in the test set were not blocked. Root cause under investigation — likely harmful-topic patterns that don't match current regex vocabulary. Options: (a) expand harmful-topic patterns, (b) add semantic similarity check against a blocked-content embedding index.
+- **Text latency P50 2819ms**: Above the 2000ms target, likely due to Groq free-tier queuing under load. Options: (a) upgrade to paid tier, (b) add request coalescing, (c) reduce prompt size for simple queries.
+- **Safety latency overhead 264ms**: Still above the 200ms target. Primary contributor is toxic-bert inference on CPU. Options: (a) switch to a lighter classifier, (b) run toxicity check async, (c) use GPU if available.
 - **Groq seed non-determinism**: Groq's LPU architecture does not guarantee perfect seed determinism. Metrics may fluctuate ±0.02 between runs.
 - **CF SDXL no seed parameter**: Cloudflare Workers AI SDXL does not support seed-based reproducibility, unlike local diffusers pipelines.
-- **No multimodal module**: Module C (VLM + grounding + confidence scoring + ECE) is not yet implemented.
-- **Safety latency overhead**: 539ms is above the target. The primary contributor is toxic-bert model inference on CPU. Options: (a) switch to a lighter classifier, (b) run toxicity check async, (c) use GPU if available.
+- **Multimodal small sample size**: Only 6 test samples for the multimodal module. ECE and grounding quality estimates have high variance; expand test set before drawing strong conclusions.
 
-## 9. Reproducibility
+## 10. Reproducibility
 
 - All random seeds fixed in `src/utils.py::seed_everything(42)` — covers Python random, NumPy, PyTorch
 - All API calls use `temperature=0` and `seed=42` where supported
@@ -201,4 +251,4 @@ CLIP zero-shot classification against labels: `["safe image", "nsfw content", "v
 - Dataset split persisted to `data/splits.json` — test split never used during development
 - All dependencies pinned in `requirements.txt`
 - Config externalised to `config.yaml` — no hardcoded parameters
-- Inference logs written to JSONL files for every call (text, image, safety)
+- Inference logs written to JSONL files for every call (text, image, multimodal, safety)
