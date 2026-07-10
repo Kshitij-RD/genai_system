@@ -1,5 +1,7 @@
 # GenAI System — Technical Report
 
+_Last updated: 2026-07-10_
+
 ## 1. Architecture Overview
 
 The system is a production-grade Generative AI pipeline built with FastAPI, structured around three core modules plus a cross-cutting safety layer:
